@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+	<meta charset="UTF-8">
+
+	<title>Visual System</title>
+
+  <!-- External libs -->
+  <script src="lib/jquery-2.0.3.min.js"></script>
+	<script src="lib/paper.js"></script>
+  <script src="lib/jquery.mousewheel.js"></script>
+  <script src="lib/moment.min.js"></script>
+
+  <!-- App -->
+  <script>
+  
+    $(function() {
+    });
+    
+    function guid(){
+      // Credits: http://stackoverflow.com/questions/105034/how-to-create-a-guid-uuid-in-javascript
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+        return v.toString(16);
+      });
+    }
+
+  </script>
+
+	<script type="text/paperscript" canvas="papercanvas">
+
+    /* Helper function */
+    
+    var scene = new Path.Rectangle(view.bounds);
+    
+    scene.fillColor = 'white';
+    scene.onMouseDrag = function(event) {
+      contexts.position += event.delta;
+      links.position    += event.delta;
+      parts.position    += event.delta;
+    };
+    
+    /* Links tool */
+    
+    function ConnectionAttempt(from){
+      var connectionAttempt = links.children['connectionAttempt'];
+      if(connectionAttempt) { connectionAttempt.remove(); }
+      var connectionAttempt = new Path.Line(from.position, from.position);
+      connectionAttempt.name        = 'connectionAttempt';
+      connectionAttempt.strokeColor = 'black';
+      connectionAttempt.strokeWidth = 1;
+      connectionAttempt.strokeCap   = 'round';
+      connectionAttempt.dashArray = [4,2];
+      connectionAttempt.from = from;
+      links.addChild(connectionAttempt);          
+    }
+    
+    function Connection(output, input){
+      var connectionAttempt = output.parent.children['connectionAttempt'];
+      if (connectionAttempt) { connectionAttempt.remove(); }
+      var from   = output.parent;
+      var to     = input.parent;
+      var linkId = from.guid + '+' + to.guid;
+      
+      if (links.children[linkId]){
+        console.log('link already exists');
+      } else { 
+        var link = new Path.Line(output.position, input.position);
+        link.name = linkId;
+        link.from = from;
+        link.to   = to;
+        link.strokeColor = 'black';
+        link.strokeWidth = 1;
+        link.strokeCap = 'round';
+        links.addChild(link);
+        console.log('Added link: ' + link.name);
+      }
+    }
+    
+    function moveMyLinks(group){
+      for (var l in links.children){
+        var link = links.children[l];
+        var from = link.from;
+        var to   = link.to;
+        if(from.guid == group.guid){
+          link.segments[0].point = group.children['output'].position;
+        }
+        if(to.guid == group.guid){
+          link.segments[1].point = group.children['input'].position;
+        }
+      }
+    }
+    
+    /* Intermediate objects */
+    
+    function Input(position){
+      var input = new Path.Circle(position, 10);
+      
+      // Unique ID's within group
+      input.name    = 'input';
+      input.concept = 'input';
+      return input;
+    }
+    
+    function Output(position){
+      var output     = new Path.Circle(position, 10);
+      
+      // Unique ID's within group
+      output.concept = 'output';
+      output.name    = 'output';
+      return output;
+    }
+    
+    /* Objects on canvas */
+    
+    function Context(point){
+      var group = new Group();
+      var size = new Size(80,50);
+      var rectangle = new Rectangle(point - size / 2, size);
+      
+      var p = new Path.Rectangle(rectangle);
+      group.addChild(p);
+
+      var corner = new Path();
+      corner.strokeColor = 'black';
+      var point = rectangle.point + rectangle.size;
+      corner.add(point);
+      corner.add(point + new Point(0,-20));
+      corner.add(point + new Point(-20,0));
+      corner.closed = true;
+      corner.name = 'corner';
+      corner.onMouseDrag = function(event) {
+        this.position += event.delta;
+        this.parent.firstChild.bounds.bottomRight += event.delta;
+      };
+      group.addChild(corner);
+            
+      group.fillColor = new Color(0.99);
+      group.strokeColor = new Color(0.2);
+      
+      group.concept = 'context';
+      group.guid = guid();
+      group.onMouseDrag  = function(event) { group.position += event.delta; };
+      contexts.addChild(group);
+      return group;
+    }
+
+    function Trigger(point){
+    
+      var group   = new Group();
+      var body    = new Path.Circle(point, 30);
+      var output  = new Output(point + new Point(30,0));
+      
+      output.onMouseDrag = function(event) { new ConnectionAttempt(this); }
+                        
+      group.addChild(body);
+      group.addChild(output);
+
+      group.fillColor    = 'white';
+      group.strokeColor  = 'gray';
+      group.concept      = 'trigger';
+      group.guid         = guid();
+      
+      group.onMouseDrag  = function(event) {
+        group.bringToFront();
+        group.position += event.delta;
+        moveMyLinks(group);
+      };
+      
+      parts.addChild(group);
+      return group;
+    }
+    
+    function Processor(point){
+      
+      var group      = new Group();
+      var size       = new Size(60,60);
+      
+      var body       = new Path.Rectangle(point - size / 2, size);
+      var input      = new Input(point + new Point(-30,0));
+      var output     = new Output(point + new Point(+30,0));
+
+      output.onMouseDrag = function(event) { new ConnectionAttempt(this); }
+      input.onMouseDrag  = function(event) { new ConnectionAttempt(this); }
+
+      group.addChild(body);
+      group.addChild(input);
+      group.addChild(output);
+
+      group.fillColor      = 'white';
+      group.strokeColor    = 'gray';
+
+      group.concept        = 'processor';
+      group.guid           = guid();
+
+      group.onMouseDrag    = function(event) {
+        group.bringToFront();
+        group.position += event.delta;
+        moveMyLinks(group);
+      };
+      
+      parts.addChild(group);
+      return group;
+    }
+    
+    function Exporter(point){
+      var group = new Group();
+      var size  = new Size(60,60);
+      var body  = new Path.Rectangle(point - size / 2, size)
+      var input = new Input(point + new Point(-30,0));
+      
+      input.onMouseDrag = function(event) { new ConnectionAttempt(this); }
+
+      group.addChild(body);
+      group.addChild(input);
+
+      group.fillColor = 'white';
+      group.strokeColor = 'gray';
+      
+      group.concept = 'exporter';
+      group.guid = guid();
+      
+      group.onMouseDrag    = function(event) {
+        group.bringToFront();
+        group.position += event.delta;
+        moveMyLinks(group);
+      };
+
+      parts.addChild(group);
+      return group;
+    }
+
+    function Operator(point){
+    
+      var group   = new Group();
+
+      var v1      = point + new Point(-30,30);
+      var v2      = point;
+      var v3      = point + new Point( 30,30);
+      
+      var body    = new Path.Arc(v1, v2, v3);
+      body.closed = true;
+      
+      var head    = new Path.Circle(point + new Point(0,-25),20);
+      var input   = new Input(point + new Point(-30,20));
+      var output  = new Output(point + new Point(+30,20));
+
+      output.onMouseDrag = function(event) { new ConnectionAttempt(this); }
+      input.onMouseDrag  = function(event) { new ConnectionAttempt(this); }
+
+      group.addChild(body);
+            
+      group.addChild(input);      
+      group.addChild(output);      
+      group.addChild(head);
+      
+      group.fillColor = 'white';
+      group.strokeColor = 'gray';
+
+      group.concept = 'operator';
+      group.guid = guid();
+
+      group.onMouseDrag = function(event) {
+        group.bringToFront();
+        group.position += event.delta;
+        moveMyLinks(group);
+      };
+
+      parts.addChild(group);
+      return group;
+    }
+    
+    /* Mouse Handlers */
+    
+    function onMouseDrag(event){
+      var connectionAttempt = links.children['connectionAttempt'];
+      if(connectionAttempt){        
+        //var start = connectionAttempt.segments[0].point;
+        connectionAttempt.segments[1].point = event.point;
+      }
+    }
+    
+    function onMouseDown(event){
+    }
+    
+    function onMouseUp(event){
+        
+      // Connecting parts...
+      var connectionAttempt = links.children['connectionAttempt'];
+      if(connectionAttempt){
+        var hit = parts.hitTest(event.point);
+        if(hit){
+          var from = connectionAttempt.from;
+          var to   = hit.item;
+          if(from.concept == 'output' && to.concept == 'input' ){ new Connection(from, to); }
+          if(from.concept == 'input'  && to.concept == 'output'){ new Connection(to, from); }
+        }
+        connectionAttempt.remove();
+      }
+      
+    }
+    
+    $('#papercanvas').mousewheel(function(event, delta) {
+      var x = event.clientX;
+      var y = event.clientY;
+      var factor = 1 + (delta / 10);
+      var sign   = factor > 0 ? 1 : -1;
+      //mercator.zoom(factor, x * sign, y * sign);
+      console.log(delta>0?"Zoom in!":"Zoom out!")
+      return false;
+    });
+
+    /* PaperJS Settings */
+    
+    function onFrame(event) {
+    }
+
+    /* My App */
+
+    var contexts = new Group();
+    var links    = new Group();
+    var parts    = new Group();
+    var hud      = new Group();
+
+    var bar = new Path.Rectangle(new Point(30,30), new Size(120, 440));
+    bar.fillColor = 'white';
+    bar.strokeColor = 'black';
+    bar.dashArray = [4,2];
+    //bar.opacity = 0.2;
+    hud.addChild(bar);
+
+    var trigger   = new Trigger  (new Point(90, 80));
+    trigger.children['output'].onMouseDrag = null;
+    trigger.onMouseDrag = function(event) { this.position = event.point; }
+    trigger.onMouseUp   = function(event) { parts.addChild(new Trigger(event.point)); this.position = new Point(90, 80); };
+
+    var processor = new Processor(new Point(90,160));
+    processor.children['input'].onMouseDrag  = null;
+    processor.children['output'].onMouseDrag = null;
+    processor.onMouseDrag = function(event) { this.position = event.point; }
+    processor.onMouseUp   = function(event) { parts.addChild(new Processor(event.point)); this.position = new Point(90, 160); };
+
+    var exporter  = new Exporter (new Point(90,240));
+    exporter.children['input'].onMouseDrag = null;
+    exporter.onMouseDrag = function(event) { this.position = event.point; }
+    exporter.onMouseUp   = function(event) { parts.addChild(new Exporter(event.point)); this.position = new Point(90, 240); };
+
+    var operator  = new Operator (new Point(90,340));
+    operator.children['input'].onMouseDrag  = null;
+    operator.children['output'].onMouseDrag = null;
+    operator.onMouseDrag = function(event) { this.position = event.point; }
+    operator.onMouseUp   = function(event) { parts.addChild(new Operator(event.point)); this.position = new Point(90, 340); };
+
+    var context   = new Context  (new Point(90,420));
+    context.children['corner'].onMouseDrag  = null;
+    context.onMouseDrag = function(event) { this.position = event.point; }
+    context.onMouseUp   = function(event) { contexts.addChild(new Context(event.point)); this.position = new Point(90, 420); };
+        
+    hud.addChild(context);
+    hud.addChild(trigger);
+    hud.addChild(processor);
+    hud.addChild(exporter);
+    hud.addChild(operator);
+        
+    hud.dashArray = [4,2];
+    hud.opacity = 0.1;
+    hud.onMouseEnter = function(event){ hud.opacity = 1.0; }
+    hud.onMouseLeave = function(event){ hud.opacity = 0.1; }
+    
+    /*
+    
+    M O D U L E S:
+    
+     Triggers:   Click
+     Processors: Download
+     Exporters:  Show (text)
+    
+     Operators:  Check (check input and send to output if OK)
+
+    */
+    
+	</script>
+
+</head>
+  <body style='margin: 0; overflow: hidden;'>
+
+    <div id="popup" style="display: none; position: absolute;">
+      <div id="name">name</div>
+      <div id="volume">volume</div>
+      <div id="meter">meter</div>
+      <div id="tags">tags</div>
+    </div>
+
+    <canvas id="papercanvas" resize></canvas>
+
+  </body>
+</html>
